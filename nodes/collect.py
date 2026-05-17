@@ -126,6 +126,14 @@ def collect_card_details(state: AgentState) -> dict:
     last_msg = get_last_human_message(state["messages"])
     extracted = extract(last_msg)
 
+    # User is correcting the amount — go back to amount collection
+    has_card_fields = any([
+        extracted.card_number, extracted.cvv,
+        extracted.expiry_month, extracted.expiry_year, extracted.cardholder_name,
+    ])
+    if (extracted.payment_amount is not None or extracted.wants_full_amount) and not has_card_fields:
+        return {"stage": "PAYMENT_AMOUNT", "next_node": "collect_payment_amount"}
+
     current_card = dict(state.get("card_details") or {})
 
     invalid_card_note = ""
@@ -145,6 +153,9 @@ def collect_card_details(state: AgentState) -> dict:
         current_card["expiry_year"] = extracted.expiry_year
     if extracted.cardholder_name:
         current_card["cardholder_name"] = extracted.cardholder_name
+    elif extracted.full_name and not current_card.get("cardholder_name"):
+        # At card collection stage any name the user provides is the cardholder name
+        current_card["cardholder_name"] = extracted.full_name
 
     required = ["card_number", "cvv", "expiry_month", "expiry_year", "cardholder_name"]
     missing = [f for f in required if not current_card.get(f)]

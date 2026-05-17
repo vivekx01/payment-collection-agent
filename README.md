@@ -8,7 +8,9 @@ A production-ready conversational AI agent for end-to-end payment collection, bu
 pip install -r requirements.txt
 cp .env.example .env
 # Set OPENAI_API_KEY in .env
-# API_BASE_URL is pre-filled in .env.example — change only if needed
+# API_BASE_URL is pre-filled — change only if needed
+# OPENAI_MODEL controls the agent model (default: gpt-4o)
+# JUDGE_MODEL controls the evaluator model (default: OPENAI_MODEL)
 ```
 
 ## Run

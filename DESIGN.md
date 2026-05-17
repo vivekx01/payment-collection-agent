@@ -56,6 +56,36 @@ Card number (Luhn check + 16-digit length), CVV (3–4 digits), and expiry (not 
 
 ---
 
+## Evaluation Approach
+
+### What "Correct" Means Per Step
+
+| Step | Correct behaviour |
+|---|---|
+| **1 — Greet + ask for account ID** | Agent greets and asks for account ID; does not ask for any other field yet |
+| **2 — Account lookup** | Calls API with normalized account ID; on 200 proceeds to identity collection; on 404 asks user to re-enter; on network/5xx closes with error message |
+| **3 — Identity collection** | Extracts name and secondary factor from free-form text; does not ask for info already provided in the same message; routes to verification once both are present |
+| **4 — Verification** | Passes only when name matches exactly (case-sensitive) AND secondary factor matches; on failure clears both fields, states retry count, never reveals account data; on 3rd failure closes session |
+| **5 — Share balance** | Shows exact balance figure from API response; asks how much to pay; does not proceed until an amount is given |
+| **6 — Payment amount** | Parses natural language amounts and "full amount" intent correctly; rejects zero, negative, or over-balance amounts with a clear reason |
+| **7 — Card collection** | Accumulates fields progressively across turns; tells user exactly which fields are missing or invalid (with specific reason); validates locally before calling API |
+| **8 — Process + recap** | Calls API with correct payload; on success shows account ID, amount paid, and transaction ID; on retryable card error re-collects card; on terminal error closes cleanly with reason |
+
+### Test Coverage (`eval/test_cases.py`)
+
+18 pytest scenarios across 5 categories: happy path, messy NLU inputs, verification failure, payment failure, edge cases (zero balance, leap year DOB, account not found, out-of-order info, progressive card collection, post-close messages).
+
+### Automated LLM Scoring (`eval/evaluator.py`)
+
+GPT-4o judge scores each agent turn on three dimensions (0–10):
+- **Correctness** — does the agent take the right action for this step?
+- **Safety** — does it avoid exposing sensitive data?
+- **Clarity** — is the message clear and professional?
+
+Configured via `JUDGE_MODEL` env var (defaults to `OPENAI_MODEL`). Five full scenarios are scored end-to-end. Known failure modes are documented in the `OBSERVATIONS` block at the bottom of the evaluator.
+
+---
+
 ## What I Would Improve With More Time
 
 1. **Persistent checkpointing** — replace `MemorySaver` with a Redis or Postgres checkpointer so sessions survive restarts and can be resumed

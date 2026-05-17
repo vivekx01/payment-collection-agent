@@ -81,6 +81,8 @@ Note: ACC1004 has a leap year DOB (1988-02-29) — intentional edge case.
 Requires `.env` with (see `.env.example`):
 - `OPENAI_API_KEY` — OpenAI API key
 - `API_BASE_URL` — payment API base URL (has a default fallback in code)
+- `OPENAI_MODEL` — model used by the agent for extraction (default: `gpt-4o`)
+- `JUDGE_MODEL` — model used by the LLM evaluator (default: `OPENAI_MODEL`)
 
 ## Running
 ```bash

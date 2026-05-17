@@ -1,8 +1,11 @@
 from __future__ import annotations
+import os
 from typing import Optional
 from pydantic import BaseModel, Field
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
+
+_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")
 
 
 class ExtractedData(BaseModel):
@@ -43,7 +46,7 @@ _extractor: Optional[ChatOpenAI] = None
 def _get_extractor():
     global _extractor
     if _extractor is None:
-        _extractor = ChatOpenAI(model="gpt-4o", temperature=0).with_structured_output(ExtractedData)
+        _extractor = ChatOpenAI(model=_MODEL, temperature=0).with_structured_output(ExtractedData)
     return _extractor
 
 

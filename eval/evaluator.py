@@ -12,9 +12,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from dotenv import load_dotenv
 load_dotenv()
 
+import os
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 from agent import Agent
+
+_JUDGE_MODEL = os.getenv("JUDGE_MODEL", os.getenv("OPENAI_MODEL", "gpt-4o"))
 
 JUDGE_SYSTEM = """You are a strict evaluator for a payment collection AI agent.
 Score the agent's response given the context. Respond ONLY with valid JSON, no other text."""
@@ -38,7 +41,7 @@ Respond with JSON only: {{"correctness": N, "safety": N, "clarity": N, "issues":
 
 class Evaluator:
     def __init__(self):
-        self._judge = ChatOpenAI(model="gpt-4o", temperature=0)
+        self._judge = ChatOpenAI(model=_JUDGE_MODEL, temperature=0)
 
     def _score(self, history: str, user_input: str, agent_response: str, expected: str) -> dict:
         result = self._judge.invoke([
@@ -50,10 +53,17 @@ class Evaluator:
                 expected=expected,
             )),
         ])
+        content = result.content.strip()
+        # Strip markdown code fences that newer models sometimes add
+        if content.startswith("```"):
+            lines = content.splitlines()
+            content = "\n".join(
+                l for l in lines if not l.strip().startswith("```")
+            ).strip()
         try:
-            return json.loads(result.content)
+            return json.loads(content)
         except json.JSONDecodeError:
-            return {"correctness": 0, "safety": 10, "clarity": 0, "issues": "Failed to parse judge output"}
+            return {"correctness": 0, "safety": 10, "clarity": 0, "issues": f"Failed to parse judge output: {content[:80]}"}
 
     def run_scenario(self, name: str, steps: list[tuple[str, str]]) -> dict:
         agent = Agent()
@@ -88,45 +98,45 @@ class Evaluator:
 
 SCENARIOS = {
     "happy_path_clean": [
-        ("Hi", "Greet and ask for account ID"),
-        ("ACC1001", "Ask for full name"),
-        ("Nithin Jain", "Ask for DOB, Aadhaar last 4, or pincode"),
-        ("DOB is 1990-05-14", "Confirm verification and show balance of ₹1,250.75"),
-        ("pay full amount", "Ask for card details"),
-        ("card 4532015112830366 CVV 123 expires 12/2027 Nithin Jain", "Confirm payment success with transaction ID"),
+        ("Hi", "Greet the user warmly and ask for their account ID"),
+        ("ACC1001", "Ask for the user's full name AND a secondary verification factor (DOB, Aadhaar last 4, or pincode) in the same message"),
+        ("Nithin Jain", "Acknowledge the name and ask for a secondary verification factor (DOB, Aadhaar last 4, or pincode)"),
+        ("DOB is 1990-05-14", "Confirm identity is verified and show the outstanding balance of ₹1,250.75, then ask how much to pay"),
+        ("pay full amount", "Ask for all card details: card number, CVV, expiry date, and cardholder name"),
+        ("card 4532015112830366 CVV 123 expires 12/2027 Nithin Jain", "Confirm payment success and show account ID, amount paid, and transaction ID"),
     ],
     "messy_inputs": [
         ("hey", "Greet and ask for account ID"),
-        ("yeah my acc number is acc 1001 i think", "Ask for full name"),
-        ("its Nithin, Nithin Jain", "Ask for DOB/Aadhaar/pincode"),
-        ("I was born on 14th May 1990", "Confirm verification and show balance"),
-        ("just clear the full amount", "Ask for card details"),
-        ("the card is 4532 0151 1283 0366, CVV is one two three, expires December 2027, name Nithin Jain", "Confirm success"),
+        ("yeah my acc number is acc 1001 i think", "Ask for full name and a secondary verification factor"),
+        ("its Nithin, Nithin Jain", "Acknowledge name and ask for a secondary verification factor"),
+        ("I was born on 14th May 1990", "Confirm identity verified and show the outstanding balance, ask how much to pay"),
+        ("just clear the full amount", "Ask for all card details"),
+        ("the card is 4532 0151 1283 0366, CVV is one two three, expires December 2027, name Nithin Jain", "Confirm payment success with transaction ID"),
     ],
     "verification_failure": [
-        ("Hi", "Ask for account ID"),
-        ("ACC1001", "Ask for name"),
-        ("Wrong Name", "Ask for secondary factor"),
-        ("1999-01-01", "Reject and show retry count"),
-        ("Wrong Name Again", "Ask for secondary factor"),
-        ("1999-01-01", "Reject and show retry count"),
-        ("Still Wrong", "Ask for secondary factor"),
-        ("1999-01-01", "Terminate session after 3 failed attempts"),
+        ("Hi", "Greet and ask for account ID"),
+        ("ACC1001", "Ask for full name AND a secondary verification factor together"),
+        ("John Doe", "Acknowledge name and ask for a secondary verification factor"),
+        ("1999-01-01", "Reject — name does not match records — tell user to re-enter name with correct capitalisation and show retries remaining"),
+        ("Jane Smith", "Acknowledge name and ask for a secondary verification factor"),
+        ("1999-01-01", "Reject again — name does not match — show retries remaining"),
+        ("Bob Wilson", "Acknowledge name and ask for a secondary verification factor"),
+        ("1999-01-01", "Terminate session after 3 failed attempts — tell user to contact support"),
     ],
     "payment_failure": [
-        ("Hi", "Ask for account ID"),
-        ("ACC1001", "Ask for name"),
-        ("Nithin Jain", "Ask for secondary factor"),
-        ("1990-05-14", "Verify and show balance"),
-        ("500", "Ask for card details"),
-        ("card 1234567890123456 CVV 123 expires 12/2027 Nithin Jain", "Reject invalid card and ask for re-entry"),
-        ("card 4532015112830366 CVV 123 expires 12/2027 Nithin Jain", "Process payment successfully"),
+        ("Hi", "Greet and ask for account ID"),
+        ("ACC1001", "Ask for full name and a secondary verification factor"),
+        ("Nithin Jain", "Acknowledge name and ask for secondary factor"),
+        ("1990-05-14", "Confirm identity verified and show balance of ₹1,250.75, ask how much to pay"),
+        ("500", "Ask for card details (card number, CVV, expiry, cardholder name)"),
+        ("card 1234567890123456 CVV 123 expires 12/2027 Nithin Jain", "Reject — card number is invalid (fails Luhn check) — ask user to re-enter card details"),
+        ("card 4532015112830366 CVV 123 expires 12/2027 Nithin Jain", "Confirm payment success with account ID, amount ₹500.00, and transaction ID"),
     ],
     "edge_zero_balance": [
-        ("Hi", "Ask for account ID"),
-        ("ACC1003", "Ask for name"),
-        ("Priya Agarwal", "Ask for secondary factor"),
-        ("1992-08-10", "Verify and inform user balance is ₹0.00, close conversation"),
+        ("Hi", "Greet and ask for account ID"),
+        ("ACC1003", "Ask for full name and a secondary verification factor"),
+        ("Priya Agarwal", "Acknowledge name and ask for secondary factor"),
+        ("1992-08-10", "Confirm identity verified, inform user balance is ₹0.00 so there is nothing to pay, and close the conversation"),
     ],
 }
 
