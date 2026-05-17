@@ -33,3 +33,6 @@ htmlcov/
 
 # LangGraph / LangChain cache
 .langchain.db
+
+.claude/.specs/*.pdf
+.claude/settings.local.json
