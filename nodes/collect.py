@@ -109,7 +109,11 @@ def collect_payment_amount(state: AgentState) -> dict:
         return {
             "payment_amount": amount,
             "stage": "CARD_COLLECTION",
-            "next_node": "collect_card_details",
+            "last_response": (
+                f"To process your payment of ₹{amount:.2f}, I'll need your card details. "
+                f"Please share your card number, CVV, expiry date, and the name as it appears on your card."
+            ),
+            "next_node": "end",
         }
 
     return {
